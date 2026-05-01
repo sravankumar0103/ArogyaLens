@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+python-multipart
+opencv-python
+Pillow
+requests
+rapidfuzz
+gTTS
+pydantic
+transformers
+torch
+googletrans==4.0.0-rc1
