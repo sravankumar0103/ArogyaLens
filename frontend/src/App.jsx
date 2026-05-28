@@ -342,6 +342,14 @@ export default function App() {
               </div>
             )}
 
+            {phase === 'error' && (
+              <div style={S.centerViewport}>
+                <h2 style={{ ...S.statusTitle, color: '#E986A8' }}>Analysis Failed</h2>
+                <p style={S.statusSub}>{err}</p>
+                <button style={{ ...S.btnFinal, marginTop: 24, width: 'auto', padding: '12px 32px' }} onClick={reset}>Try Again</button>
+              </div>
+            )}
+
             {result && phase === 'done' && (
               <div style={{ padding: '20px 0' }}>
                  <div style={{ ...S.confidenceBanner, background: STATUS_COLORS[result.confidence === 'high' ? 'normal' : 'high'].bg, color: STATUS_COLORS[result.confidence === 'high' ? 'normal' : 'high'].text }}>
@@ -355,6 +363,67 @@ export default function App() {
                     </div>
                     <div style={S.resultContent}>
                       <DesktopSection label={cur.summary} color="#7C6FCD"><p style={S.bodyP}>{result.summary}</p></DesktopSection>
+                      
+                      {result.what_to_do && result.what_to_do.length > 0 && (
+                        <DesktopSection label="What To Do" color="#4CBFA4">
+                          <ul style={{ paddingLeft: 20, margin: 0, color: '#7A7490', fontSize: 15, lineHeight: 1.8 }}>
+                            {result.what_to_do.map((item, i) => <li key={i}>{item}</li>)}
+                          </ul>
+                        </DesktopSection>
+                      )}
+
+                      {result.details && result.details.length > 0 && (
+                        <DesktopSection label="Details" color="#E986A8">
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                            {result.details.map((detail, idx) => {
+                              const sColors = STATUS_COLORS[detail.status] || STATUS_COLORS.info;
+                              return (
+                                <div key={idx} style={{ padding: '16px 20px', borderRadius: 16, background: sColors.bg, border: `1px solid ${sColors.main}40` }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                    <div style={{ fontSize: 16, fontWeight: 800, color: sColors.text }}>{detail.name}</div>
+                                    <div style={{ fontSize: 14, fontWeight: 700, color: sColors.main, background: '#FFFFFF', padding: '4px 10px', borderRadius: 8 }}>{detail.primary}</div>
+                                  </div>
+                                  {detail.secondary && <div style={{ fontSize: 14, color: sColors.text, marginTop: 8, opacity: 0.9 }}>{detail.secondary}</div>}
+                                  {(detail.when || detail.duration) && (
+                                    <div style={{ display: 'flex', gap: 16, marginTop: 12, fontSize: 12, fontWeight: 700, color: sColors.main }}>
+                                      {detail.when && <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>🕒 {detail.when}</div>}
+                                      {detail.duration && <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>📅 {detail.duration}</div>}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </DesktopSection>
+                      )}
+
+                      {result.timeline && result.timeline.length > 0 && (
+                        <DesktopSection label="Timeline" color="#72B4E8">
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                            {result.timeline.map((step, idx) => (
+                              <div key={idx} style={{ display: 'flex', gap: 16 }}>
+                                <div style={{ width: 12, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                                  <div style={{ width: 12, height: 12, borderRadius: '50%', background: '#72B4E8' }} />
+                                  {idx !== result.timeline.length - 1 && <div style={{ width: 2, flex: 1, background: '#E6F3FC', marginTop: 4 }} />}
+                                </div>
+                                <div style={{ paddingBottom: idx !== result.timeline.length - 1 ? 16 : 0 }}>
+                                  <div style={{ fontSize: 13, fontWeight: 800, color: '#72B4E8', textTransform: 'uppercase', marginBottom: 4 }}>{step.step}</div>
+                                  <div style={{ fontSize: 15, color: '#1C1A35', fontWeight: 500 }}>{step.action}</div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </DesktopSection>
+                      )}
+
+                      {result.key_points && result.key_points.length > 0 && (
+                        <DesktopSection label="Key Points" color="#7C6FCD">
+                          <ul style={{ paddingLeft: 20, margin: 0, color: '#7A7490', fontSize: 15, lineHeight: 1.8 }}>
+                            {result.key_points.map((pt, i) => <li key={i}>{pt}</li>)}
+                          </ul>
+                        </DesktopSection>
+                      )}
+
                       <button style={S.btnFinal} onClick={reset}>{cur.scanAnother}</button>
                     </div>
                  </div>
@@ -436,7 +505,7 @@ const S = {
   vDividerNav: { width: 1, height: 24, background: '#EEEBFB' },
   profileBtn: { display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 12, background: '#F8F7FF', border: '1px solid #EEEBFB', color: '#7C6FCD' },
   userName: { fontSize: 13, fontWeight: 700, color: '#1C1A35' },
-  main: { maxWidth: 1400, margin: '0 auto', flex: 1, padding: '0 40px', width: '100%', display: 'flex', flexDirection: 'column', height: 'calc(100vh - 60px)', overflow: 'hidden' },
+  main: { maxWidth: 1400, margin: '0 auto', flex: 1, padding: '0 40px 40px 40px', width: '100%', display: 'flex', flexDirection: 'column', height: 'calc(100vh - 60px)', overflowY: 'auto' },
   staticLayoutPC: { height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', textAlign: 'center', padding: '0' },
   heroStatic: { marginBottom: 32, maxWidth: 900 },
   taglineStatic: { background: '#EDEAFC', color: '#4A3FA0', fontSize: 10, fontWeight: 800, borderRadius: 999, padding: '6px 16px', display: 'inline-block', marginBottom: 16, letterSpacing: '0.5px', textTransform: 'uppercase' },

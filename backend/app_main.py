@@ -31,18 +31,11 @@ GEMINI_MODELS = [
     if model.strip()
 ]
 MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(10 * 1024 * 1024)))
-SUPPORTED_IMAGE_TYPES = {
-    "image/bmp",
-    "image/gif",
-    "image/heic",
-    "image/heif",
-    "image/jpeg",
-    "image/jpg",
-    "image/png",
-    "image/webp",
-}
+
 
 UPLOAD_DIR = BASE_DIR / "uploads"
+AUDIO_DIR = BASE_DIR / "audio"
+AUDIO_DIR.mkdir(exist_ok=True)
 # We don't create these anymore as we use in-memory processing
 
 gemini_client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
@@ -124,9 +117,7 @@ def _validate_image(file: UploadFile, content: bytes) -> str:
 
     mime_type = (file.content_type or "").lower()
     if mime_type and not mime_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="Please upload an image file.")
-    if mime_type and mime_type not in SUPPORTED_IMAGE_TYPES:
-        raise HTTPException(status_code=400, detail="Please upload a JPG, PNG, WEBP, HEIC, GIF, or BMP image.")
+        raise HTTPException(status_code=400, detail="Please upload a valid image file.")
 
     return mime_type or "image/jpeg"
 
