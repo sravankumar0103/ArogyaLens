@@ -19,3 +19,5 @@ backend/uploads/*
 # System
 .DS_Store
 Thumbs.db
+
+backend/scan_cache.json

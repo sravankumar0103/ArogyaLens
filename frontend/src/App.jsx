@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Camera, Upload, FileText, FlaskConical, Pill, Lock, Play, RotateCcw, Heart, User, MapPin, Scale, Ruler, X, CheckCircle2, ChevronRight, Phone, ArrowLeft, ShieldCheck, History, Calendar, Trash2 } from 'lucide-react';
 import { supabase } from './supabase';
+import MedicineOutput from './components/MedicineOutput.jsx';
 
 const resolveApiBase = () => {
   const configured = import.meta.env.VITE_API_URL?.trim();
@@ -184,6 +185,8 @@ export default function App() {
   const [historyItems, setHistoryItems] = useState([]);
   const camRef = useRef(null);
   const fileRef = useRef(null);
+  const audioRef = useRef(null);
+  const [isPlaying, setIsPlaying] = useState(false);
 
   const cur = T[lang] || T.en;
 
@@ -231,6 +234,7 @@ export default function App() {
 
   const handleFile = async (file) => {
     if (!file) return;
+    if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; setIsPlaying(false); }
     setPreview(URL.createObjectURL(file));
     setPhase('processing');
     setResult(null);
@@ -248,13 +252,25 @@ export default function App() {
   };
 
   const handlePlayAudio = () => {
-    if (!result || !result.summary) return;
-    const audioUrl = `${API}/audio?text=${encodeURIComponent(result.summary)}&lang=${lang}`;
+    if (audioRef.current) {
+      if (isPlaying) { audioRef.current.pause(); setIsPlaying(false); }
+      else { audioRef.current.play(); setIsPlaying(true); }
+      return;
+    }
+    const text = result?.audio_text || result?.summary;
+    if (!text) return;
+    const audioUrl = `${API}/api/audio?text=${encodeURIComponent(text)}&lang=${lang}`;
     const audio = new Audio(audioUrl);
-    audio.play().catch(e => console.error("Audio playback failed:", e));
+    audio.onended = () => setIsPlaying(false);
+    audioRef.current = audio;
+    audio.play().then(() => setIsPlaying(true)).catch(e => console.error("Audio playback failed:", e));
   };
 
-  const reset = () => { setPreview(null); setResult(null); setErr(null); setPhase('idle'); };
+  const reset = () => {
+    if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
+    setIsPlaying(false);
+    setPreview(null); setResult(null); setErr(null); setPhase('idle');
+  };
 
   return (
     <div style={S.root}>
@@ -350,7 +366,11 @@ export default function App() {
               </div>
             )}
 
-            {result && phase === 'done' && (
+            {result && phase === 'done' && result.document_type === 'medicine' && result.medicines?.length > 0 && (
+              <MedicineOutput result={result} onPlayAudio={handlePlayAudio} isPlaying={isPlaying} onReset={reset} labels={cur} />
+            )}
+
+            {result && phase === 'done' && !(result.document_type === 'medicine' && result.medicines?.length > 0) && (
               <div style={{ padding: '20px 0' }}>
                  <div style={{ ...S.confidenceBanner, background: STATUS_COLORS[result.confidence === 'high' ? 'normal' : 'high'].bg, color: STATUS_COLORS[result.confidence === 'high' ? 'normal' : 'high'].text }}>
                    <strong>{result.confidence} {cur.confNote}</strong><span> • {result.confidence_note}</span>

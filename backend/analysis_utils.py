@@ -166,6 +166,77 @@ def normalize_result_payload(payload: Any, lang_code: str) -> dict[str, Any]:
     return result
 
 
+def normalize_medicine_payload(payload: dict[str, Any], lang_code: str) -> dict[str, Any]:
+    """Normalize the medicine-specific format while preserving all its sections."""
+    medicines: list[dict[str, str]] = []
+    for item in payload.get("medicines") or []:
+        if not isinstance(item, dict):
+            continue
+        name = _stringify(item.get("name"))
+        if not name:
+            continue
+        medicines.append(
+            {
+                "name": name,
+                "purpose": _stringify(item.get("purpose")),
+                "dosage": _stringify(item.get("dosage")),
+                "frequency": _normalize_frequency(item.get("frequency")),
+                "instructions": _stringify(item.get("instructions")),
+                "side_effects": _stringify(item.get("side_effects")),
+                "composition": _stringify(item.get("composition")),
+            }
+        )
+
+    safety_checks: list[dict[str, str]] = []
+    for item in payload.get("safety_checks") or []:
+        if isinstance(item, dict):
+            message = _stringify(item.get("message"))
+            if message:
+                status = _stringify(item.get("status")).lower()
+                safety_checks.append({"status": "warning" if "warn" in status or "danger" in status else "safe", "message": message})
+        else:
+            message = _stringify(item)
+            if message:
+                safety_checks.append({"status": "safe", "message": message})
+
+    summary = _stringify(payload.get("summary")) or _messages(lang_code)["fallback_summary"]
+
+    return {
+        "document_type": "medicine",
+        "confidence": _normalize_confidence(payload.get("confidence")),
+        "confidence_note": _stringify(payload.get("confidence_note")) or _messages(lang_code)["fallback_note"],
+        "title": _stringify(payload.get("title")) or _default_title("medicine", lang_code),
+        "summary": summary,
+        "medicines": medicines[:10],
+        "important_warnings": _normalize_string_list(payload.get("important_warnings"))[:6],
+        "safety_checks": safety_checks[:6],
+        "advice": _normalize_string_list(payload.get("advice"))[:6],
+        "key_points": _normalize_string_list(payload.get("key_points"))[:6],
+        "audio_text": _stringify(payload.get("audio_text")) or summary,
+        "analysis_source": _stringify(payload.get("analysis_source")),
+    }
+
+
+def _normalize_frequency(value: Any) -> str:
+    """Keep frequency short and fixed: trim doctor-deferral phrases and trailing clauses."""
+    text = _stringify(value)
+    if not text:
+        return ""
+    # Cut anything after ", or", " or ", "as advised", "as directed"
+    lowered = text.lower()
+    for marker in (", or", " or ", "as advised", "as directed", ", as", "unless"):
+        idx = lowered.find(marker)
+        if idx > 0:
+            text = text[:idx]
+            lowered = lowered[:idx]
+    text = text.strip(" ,.;")
+    # If still a long sentence, keep only the first few words
+    words = text.split()
+    if len(words) > 5:
+        text = " ".join(words[:5]).strip(" ,.;")
+    return text
+
+
 def build_text_fallback(text: str, lang_code: str) -> dict[str, Any]:
     fallback = build_unavailable_result(lang_code)
     cleaned = " ".join(text.split())

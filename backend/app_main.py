@@ -13,7 +13,11 @@ from gtts import gTTS
 import io
 from fastapi.responses import StreamingResponse
 
-from analysis_utils import build_text_fallback, build_unavailable_result, extract_json_object, normalize_result_payload
+import hashlib
+
+from analysis_utils import build_text_fallback, build_unavailable_result, extract_json_object, normalize_medicine_payload, normalize_result_payload
+from medicine_kb import enrich_medicine
+from scan_cache import cache_get, cache_set
 from nim_engine import run_pipeline
 from openfda import get_safety_checker
 
@@ -60,24 +64,73 @@ LANG_MAP = {
 
 SYSTEM_PROMPT = """
 You are ArogyaLens, a calm and caring medical document explainer for everyday people.
+You are a healthcare assistant — not Wikipedia, not a medical research paper.
 Analyze the uploaded image and return ONLY valid JSON.
 
-Important rules:
+Global rules:
 - Keep these enum fields EXACTLY in English:
   - document_type: prescription | lab_report | medicine | unknown
   - confidence: high | medium | low
-  - details[].status: normal | high | low | info
 - All other user-facing text must be in {LANGUAGE}.
 - If the image is not a medical document, or the text is too unclear, use document_type "unknown" and confidence "low".
 - Never invent medicine names, dosages, test values, or diagnoses that are not visible.
-- Use short, simple sentences. Sound supportive, not clinical.
-- Use empty arrays instead of null values.
-- Keep timeline as an array of objects with "step" and "action".
-- Keep details as an array of objects with "name", "primary", "secondary", "when", "duration", and "status".
+- Use short, simple, spoken-style sentences. Caring, rural-friendly, elderly-friendly. No medical jargon, no robotic AI language, no encyclopedia paragraphs, no filler.
+- Use empty strings and empty arrays instead of null. NEVER omit a key from the JSON shape.
+- BE DETERMINISTIC: describe only what is visible, in the same order it appears on the package. The same image must always produce the same content.
+
+First detect the document type, then use the matching format below.
+
+=== FORMAT A: MEDICINE (strip, bottle, syrup, tablet pack, capsule, injection) ===
+Everything must be based ONLY on the uploaded medicine image: detected medicine(s), dosage, combinations, warnings, timing, instructions.
+- title: the real combined medicine name, e.g. "Paracetamol + Azithromycin" or "Eldoper (Loperamide) 2mg Capsules". NEVER a generic title like "Detected Medicines".
+- summary: 2-4 short natural sentences ONLY about what was detected, why it is generally used, and what condition it usually helps.
+  GOOD: "These tablets are usually used for fever, body pain, and cold symptoms."
+  BAD: "This medicine is indicated for symptomatic management of upper respiratory tract conditions."
+- medicines: one card per detected medicine. EVERY card MUST be as complete as possible:
+  - If dosage/frequency/instructions are printed on the package or prescription, use exactly those.
+  - Otherwise, if the medicine is well-known, give its standard commonly-recommended adult guidance (e.g. dosage "Take one tablet", frequency "Twice a day", instructions "Take after food") — this is label-standard knowledge, not hallucination.
+  - side_effects: ALWAYS give the 1-2 most important real warnings for that medicine (e.g. "May cause sleepiness; Do not drive after taking"). Separate multiple warnings with "; ".
+  - composition: read from the package if visible, else the medicine's known active ingredients.
+  - Use an empty string ONLY when the medicine itself is unrecognizable or no reliable standard guidance exists. NEVER invent specific mg doses that are not visible or standard.
+- important_warnings: ONLY if there is a real dangerous interaction, overdose risk, duplicate ingredient, or unsafe combination. Empty array if none. No fake generic warnings.
+- safety_checks: 2-4 items covering: safe-together check, expiry detection if visible, storage guidance, when to consult a doctor. status "safe" or "warning". Do not over-generate warnings.
+- advice: 2-4 REAL practical recovery suggestions matched to the probable condition (e.g. cough medicine -> drink warm water, avoid cold drinks; acidity medicine -> avoid spicy food). No random lifestyle advice.
+- key_points: 3-5 compact, important-only bullets.
 
 Return exactly this JSON shape:
 {
-  "document_type": "prescription|lab_report|medicine|unknown",
+  "document_type": "medicine",
+  "confidence": "high|medium|low",
+  "confidence_note": "One short sentence about image clarity",
+  "title": "Real medicine name(s)",
+  "summary": "Short natural human summary",
+  "medicines": [
+    {
+      "name": "ALWAYS format as: Brand name (active formula) strength + type. Example: 'Eldoper (Loperamide) 2mg Capsules', 'Saridon (Paracetamol + Propyphenazone + Caffeine) Tablets'. The BRAND name printed on the package comes FIRST, formula in brackets after it. NEVER use only the formula name as the title.",
+      "purpose": "One-line real usage (e.g., For fever and body pain)",
+      "dosage": "e.g., 'Take one tablet', 'Take one capsule', '5ml'",
+      "frequency": "STRICT: must contain a NUMBER of times per day. Pick ONLY from: 'Once a day', 'Twice a day', 'Three times a day', 'Up to three times a day', 'Morning and Night', 'Morning, Afternoon, Night', 'At night before sleep'. Convert shorthand (1-0-1 -> Morning and Night). FORBIDDEN: 'When needed', 'As needed', any sentence, any 'or', any 'as advised/directed by doctor'.",
+      "instructions": "Practical usage instructions (e.g., Take after food, Take with water)",
+      "side_effects": "The 1-2 most important realistic warnings, separated by '; ' (e.g., 'May cause sleepiness; Do not drive after taking')",
+      "composition": "Active ingredients, or empty string"
+    }
+  ],
+  "important_warnings": [],
+  "safety_checks": [
+    {"status": "safe|warning", "message": "Short safety line"}
+  ],
+  "advice": ["Practical suggestion 1", "Practical suggestion 2"],
+  "key_points": ["Point 1", "Point 2", "Point 3"],
+  "audio_text": "Complete simplified spoken explanation of the whole result"
+}
+
+=== FORMAT B: PRESCRIPTION / LAB REPORT / UNKNOWN ===
+- details[].status: normal | high | low | info (EXACTLY in English)
+- Keep timeline as an array of objects with "step" and "action".
+
+Return exactly this JSON shape:
+{
+  "document_type": "prescription|lab_report|unknown",
   "confidence": "high|medium|low",
   "confidence_note": "One short sentence about image clarity and reliability",
   "reassurance": "One or two calm opening sentences",
@@ -104,6 +157,8 @@ Return exactly this JSON shape:
   "audio_text": "A short voice-friendly summary",
   "positive_note": "A supportive closing sentence"
 }
+
+RETURN EXACTLY ONE JSON OBJECT MATCHING THE DETECTED DOCUMENT TYPE.
 """
 
 
@@ -146,7 +201,7 @@ def _run_gemini_analysis(content: bytes, mime_type: str, prompt: str) -> tuple[d
             response = gemini_client.models.generate_content(
                 model=model_name,
                 contents=[types.Part.from_bytes(data=content, mime_type=mime_type), prompt],
-                config=types.GenerateContentConfig(response_mime_type="application/json", temperature=0.2),
+                config=types.GenerateContentConfig(response_mime_type="application/json", temperature=0.0, seed=42),
             )
             payload = extract_json_object(response.text)
             if payload:
@@ -205,6 +260,12 @@ async def analyze_document(file: UploadFile = File(...), language: str = "en"):
     mime_type = _validate_image(file, content)
     file_id = str(uuid.uuid4())
 
+    cache_key = hashlib.sha256(content + language.encode()).hexdigest()
+    cached = cache_get(cache_key)
+    if cached:
+        logger.info("Returning cached analysis for %s", cache_key[:12])
+        return cached
+
     provider_errors: list[str] = []
 
     result, errors = _run_gemini_analysis(content, mime_type, prompt)
@@ -218,10 +279,16 @@ async def analyze_document(file: UploadFile = File(...), language: str = "en"):
         logger.warning("All analyzers failed: %s", " | ".join(provider_errors))
         result = build_unavailable_result(language)
 
-    result = normalize_result_payload(result, language)
-    result = _apply_safety_check(result, language)
+    if result.get("document_type") == "medicine" and isinstance(result.get("medicines"), list) and result["medicines"]:
+        result = normalize_medicine_payload(result, language)
+        result["medicines"] = [enrich_medicine(med, language) for med in result["medicines"]]
+    else:
+        result = normalize_result_payload(result, language)
+        result = _apply_safety_check(result, language)
 
     result["audio_url"] = f"/api/audio?text={result.get('summary', '')}&lang={language}"
+    if result.get("document_type") != "unknown":
+        cache_set(cache_key, result)
     return result
 
 
@@ -229,7 +296,7 @@ async def analyze_document(file: UploadFile = File(...), language: str = "en"):
 def health():
     return {
         "status": "ok",
-        "version": "4.0",
+        "version": "4.1-medicine-format",
         "providers": {
             "gemini_configured": bool(GEMINI_API_KEY),
             "nvidia_configured": bool(os.getenv("NVAPI_KEY")),
