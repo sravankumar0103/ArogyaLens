@@ -26,21 +26,28 @@ import requests
 
 logger = logging.getLogger("arogya.cache")
 
-SUPABASE_URL = (os.getenv("SUPABASE_URL") or "").rstrip("/")
-SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY") or ""
-
 _LOCAL_FILE = Path(__file__).resolve().parent / "scan_cache.json"
 _MAX_LOCAL_ENTRIES = 500
 
 
+def _supabase_url() -> str:
+    # Read at call time: .env is loaded by app_main after this module is imported
+    return (os.getenv("SUPABASE_URL") or "").rstrip("/")
+
+
+def _service_key() -> str:
+    return os.getenv("SUPABASE_SERVICE_KEY") or ""
+
+
 def _supabase_enabled() -> bool:
-    return bool(SUPABASE_URL and SUPABASE_SERVICE_KEY)
+    return bool(_supabase_url() and _service_key())
 
 
 def _headers() -> dict[str, str]:
+    key = _service_key()
     return {
-        "apikey": SUPABASE_SERVICE_KEY,
-        "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
+        "apikey": key,
+        "Authorization": f"Bearer {key}",
         "Content-Type": "application/json",
     }
 
@@ -49,7 +56,7 @@ def cache_get(key: str) -> dict | None:
     if _supabase_enabled():
         try:
             resp = requests.get(
-                f"{SUPABASE_URL}/rest/v1/scan_cache",
+                f"{_supabase_url()}/rest/v1/scan_cache",
                 params={"key": f"eq.{key}", "select": "result"},
                 headers=_headers(),
                 timeout=6,
@@ -72,7 +79,7 @@ def cache_set(key: str, result: dict) -> None:
     if _supabase_enabled():
         try:
             resp = requests.post(
-                f"{SUPABASE_URL}/rest/v1/scan_cache",
+                f"{_supabase_url()}/rest/v1/scan_cache",
                 params={"on_conflict": "key"},
                 headers={**_headers(), "Prefer": "resolution=merge-duplicates"},
                 json={"key": key, "result": result},

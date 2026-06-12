@@ -287,7 +287,9 @@ async def analyze_document(file: UploadFile = File(...), language: str = "en"):
         result = _apply_safety_check(result, language)
 
     result["audio_url"] = f"/api/audio?text={result.get('summary', '')}&lang={language}"
-    if result.get("document_type") != "unknown":
+    # Only medicines go in the universal cache: identical for everyone, no personal data.
+    # Prescriptions and lab reports contain personal details and are never cached globally.
+    if result.get("document_type") == "medicine":
         cache_set(cache_key, result)
     return result
 

@@ -223,8 +223,12 @@ export default function App() {
       setHistoryItems(prev => [{ ...scanResult, created_at: new Date().toISOString() }, ...prev]);
       return;
     }
+    // The scans table references profiles(phone), so make sure the profile row exists first
+    const { error: profileError } = await supabase.from('profiles').upsert({ phone, ...profile });
+    if (profileError) { console.error('Profile upsert failed:', profileError); return; }
     const newScan = { user_phone: phone, title: scanResult.title, document_type: scanResult.document_type, summary: scanResult.summary, result_data: scanResult, created_at: new Date().toISOString() };
-    const { data } = await supabase.from('scans').insert(newScan).select().single();
+    const { data, error } = await supabase.from('scans').insert(newScan).select().single();
+    if (error) { console.error('Scan save failed:', error); return; }
     if (data) setHistoryItems(prev => [data, ...prev]);
   };
 
