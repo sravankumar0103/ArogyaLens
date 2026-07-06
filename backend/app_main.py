@@ -37,10 +37,14 @@ GEMINI_MODELS = [
 MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(10 * 1024 * 1024)))
 
 
-UPLOAD_DIR = BASE_DIR / "uploads"
+# Audio is streamed in-memory via /api/audio; the static mount is only kept
+# for legacy local files and skipped on read-only (serverless) filesystems.
 AUDIO_DIR = BASE_DIR / "audio"
-AUDIO_DIR.mkdir(exist_ok=True)
-# We don't create these anymore as we use in-memory processing
+try:
+    AUDIO_DIR.mkdir(exist_ok=True)
+    _AUDIO_MOUNT_OK = True
+except OSError:
+    _AUDIO_MOUNT_OK = False
 
 gemini_client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 
@@ -54,7 +58,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.mount("/audio", StaticFiles(directory=str(AUDIO_DIR)), name="audio")
+if _AUDIO_MOUNT_OK:
+    app.mount("/audio", StaticFiles(directory=str(AUDIO_DIR)), name="audio")
 
 LANG_MAP = {
     "en": ("English", "en"),
