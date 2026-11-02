@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Camera, Upload, FileText, FlaskConical, Pill, Lock, Play, RotateCcw, Heart, User, MapPin, Scale, Ruler, X, CheckCircle2, ChevronRight, Phone, ArrowLeft, ShieldCheck, History, Calendar, Trash2 } from 'lucide-react';
+import { Camera, Upload, FileText, FlaskConical, Pill, Lock, Play, RotateCcw, Heart, User, MapPin, Scale, Ruler, X, CheckCircle2, ChevronRight, Phone, ArrowLeft, ShieldCheck, History, Calendar, Trash2, ScanLine, Sparkles, Languages, Volume2, Globe2 } from 'lucide-react';
 import { supabase } from './supabase';
 import MedicineOutput from './components/MedicineOutput.jsx';
 
@@ -171,12 +171,11 @@ export default function App() {
   const [preview, setPreview] = useState(null);
   const [showProfile, setShowProfile] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
-  const [isAuthenticated, setIsAuthenticated] = useState(() => localStorage.getItem('arogya_session') === 'true');
-  
-  const [loginStep, setLoginStep] = useState('number');
-  const [phone, setPhone] = useState(localStorage.getItem('arogya_phone') || '');
-  const [otp, setOtp] = useState('');
-  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [phone] = useState(() => {
+    let id = localStorage.getItem('arogya_device_id');
+    if (!id) { id = `device_${Math.random().toString(36).slice(2)}${Date.now()}`; localStorage.setItem('arogya_device_id', id); }
+    return id;
+  });
 
   const [profile, setProfile] = useState(() => {
     const saved = localStorage.getItem('arogya_profile');
@@ -195,12 +194,8 @@ export default function App() {
   }, [profile]);
 
   useEffect(() => {
-    localStorage.setItem('arogya_session', isAuthenticated);
-    if (isAuthenticated && phone) {
-      localStorage.setItem('arogya_phone', phone);
-      fetchCloudData();
-    }
-  }, [isAuthenticated]);
+    fetchCloudData();
+  }, []);
 
   const fetchCloudData = async () => {
     if (!import.meta.env.VITE_SUPABASE_URL) return;
@@ -214,12 +209,12 @@ export default function App() {
 
   const syncProfile = async (newProfile) => {
     setProfile(newProfile);
-    if (!isAuthenticated || !import.meta.env.VITE_SUPABASE_URL) return;
+    if (!import.meta.env.VITE_SUPABASE_URL) return;
     await supabase.from('profiles').upsert({ phone, ...newProfile });
   };
 
   const saveScan = async (scanResult) => {
-    if (!isAuthenticated || !import.meta.env.VITE_SUPABASE_URL) {
+    if (!import.meta.env.VITE_SUPABASE_URL) {
       setHistoryItems(prev => [{ ...scanResult, created_at: new Date().toISOString() }, ...prev]);
       return;
     }
@@ -231,10 +226,6 @@ export default function App() {
     if (error) { console.error('Scan save failed:', error); return; }
     if (data) setHistoryItems(prev => [data, ...prev]);
   };
-
-  const handleLogin = () => { if (phone.length === 10) { setLoginStep('otp'); } };
-  const verifyOtp = () => { if (otp.length === 4) { setIsAuthenticated(true); } };
-  const logout = () => { setIsAuthenticated(false); localStorage.removeItem('arogya_session'); reset(); };
 
   const handleFile = async (file) => {
     if (!file) return;
@@ -278,31 +269,6 @@ export default function App() {
 
   return (
     <div style={S.root}>
-      {!isAuthenticated ? (
-        <div style={S.authRoot}>
-          <div style={S.authCircle1} /><div style={S.authCircle2} />
-          <div style={S.authCard}>
-            <div style={S.authHeader}><div style={S.authLogo}>Arogya<span style={{ color: '#7C6FCD' }}>Lens</span></div><p style={S.authSub}>{cur.quote?.split(';')[0]}</p></div>
-            {loginStep === 'number' ? (
-              <div>
-                <h2 style={S.authTitle}>{cur.signIn}</h2><p style={S.authDesc}>{cur.enterMobile}</p>
-                <div style={S.inputField}><div style={S.phonePrefix}><img src="https://flagcdn.com/w20/in.png" alt="IN" style={{ width: 20, borderRadius: 2 }} /><span style={{ marginLeft: 8, fontWeight: 700, color: '#1C1A35' }}>+91</span></div>
-                <input style={S.phoneInput} type="tel" placeholder="00000 00000" maxLength={10} value={phone} onChange={e => setPhone(e.target.value.replace(/\D/g, ''))}/></div>
-                <button style={{ ...S.authBtn, opacity: phone.length === 10 ? 1 : 0.6 }} onClick={handleLogin} disabled={phone.length < 10 || isLoggingIn}>{isLoggingIn ? <div style={S.miniSpinner} /> : <>{cur.getOtp} <ChevronRight size={18} style={{ marginLeft: 4 }} /></>}</button>
-              </div>
-            ) : (
-              <div>
-                <button style={S.backBtn} onClick={() => setLoginStep('number')}><ArrowLeft size={16} style={{ marginRight: 6 }} /> {cur.back}</button>
-                <h2 style={S.authTitle}>{cur.verifyOtp}</h2><p style={S.authDesc}>{cur.sentCode} <br/><span style={{ color: '#1C1A35', fontWeight: 700 }}>+91 {phone}</span></p>
-                <div style={S.otpRow}>{[0,1,2,3].map(i => (<input key={i} style={S.otpBox} type="text" maxLength={1} value={otp[i] || ''} onChange={e => { const val = e.target.value; if (val.length <= 1) { const newOtp = otp.split(''); newOtp[i] = val; setOtp(newOtp.join('')); if (val && i < 3) e.target.nextSibling?.focus(); } }}/>))}</div>
-                <button style={{ ...S.authBtn, marginTop: 32, opacity: otp.length === 4 ? 1 : 0.6 }} onClick={verifyOtp} disabled={otp.length < 4 || isLoggingIn}>{isLoggingIn ? <div style={S.miniSpinner} /> : <>{cur.verifyContinue}</>}</button>
-                <p style={S.resendText}>{cur.resend}</p>
-              </div>
-            )}
-            <div style={S.authFooter}><ShieldCheck size={14} style={{ marginRight: 6, color: '#4CBFA4' }} />Test Mode · No SMS Charges</div>
-          </div>
-        </div>
-      ) : (
         <>
           <nav style={S.nav}>
             <div style={S.navInner}>
@@ -354,7 +320,61 @@ export default function App() {
                 </div>
               </div>
             )}
-            
+
+            {phase === 'idle' && !result && (
+              <section style={S.aboutSection}>
+                <div style={S.aboutIntro}>
+                  <div style={S.aboutEyebrow}>About ArogyaLens</div>
+                  <h2 style={S.aboutHeadline}>Medical documents, finally decoded.</h2>
+                  <p style={S.aboutSub}>ArogyaLens reads prescriptions, lab reports, and medicine labels, then explains them in plain language — in the language you're most comfortable with.</p>
+                </div>
+
+                <div style={S.howItWorksRow}>
+                  {[
+                    { icon: ScanLine, step: '01', title: 'Capture', body: 'Photograph or upload a prescription, lab report, or medicine.' },
+                    { icon: Sparkles, step: '02', title: 'Understand', body: 'AI analysis breaks it down into plain, accurate language.' },
+                    { icon: CheckCircle2, step: '03', title: 'Act with confidence', body: 'Get a clear summary of what it means and what to do next.' },
+                  ].map((s, i) => {
+                    const Icon = s.icon;
+                    return (
+                      <div key={i} style={S.howStepCard}>
+                        <div style={S.howStepTop}>
+                          <div style={S.howStepIcon}><Icon size={20} strokeWidth={1.75} /></div>
+                          <div style={S.howStepNum}>{s.step}</div>
+                        </div>
+                        <div style={S.howStepTitle}>{s.title}</div>
+                        <div style={S.howStepBody}>{s.body}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div style={S.featureGrid}>
+                  {[
+                    { icon: Languages, title: 'Multilingual by default', body: 'Available in English, Hindi, and Telugu, with more on the way.' },
+                    { icon: Volume2, title: "Listen, don't just read", body: 'Every result can be played back as audio for accessibility and convenience.' },
+                    { icon: History, title: 'Your history, organized', body: 'Every scan is saved to your profile so you can revisit it anytime.' },
+                    { icon: ShieldCheck, title: 'Privacy-first architecture', body: 'Documents are processed, never stored. Your data stays yours.' },
+                    { icon: FileText, title: 'Built for every document type', body: 'Prescriptions, lab reports, and medicine labels, all handled natively.' },
+                    { icon: Heart, title: 'Designed for clarity', body: 'No medical jargon. Just answers, explained the way a doctor would if they had the time.' },
+                  ].map((f, i) => {
+                    const Icon = f.icon;
+                    return (
+                      <div key={i} style={S.featureCard}>
+                        <div style={S.featureIcon}><Icon size={20} strokeWidth={1.75} color="#7C6FCD" /></div>
+                        <div style={S.featureTitle}>{f.title}</div>
+                        <div style={S.featureBody}>{f.body}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div style={S.aboutClosing}>
+                  Healthcare information shouldn't require a medical degree to understand. ArogyaLens makes sure it doesn't.
+                </div>
+              </section>
+            )}
+
             {phase === 'processing' && (
               <div style={S.centerViewport}>
                 <div style={S.spinnerContainer}><div style={S.spinnerLarge} /></div>
@@ -467,7 +487,6 @@ export default function App() {
                     <div style={S.langSelectRow}>{LANGS.map(l => (<button key={l.code} onClick={() => { setLang(l.code); syncProfile({ ...profile, language: l.code }); }} style={{ ...S.langOpt, ...(lang === l.code ? S.langOptActive : {}) }}>{l.label}</button>))}</div>
                   </div>
                   <button style={S.saveBtn} onClick={() => setShowProfile(false)}>{cur.save}</button>
-                  <button style={{ ...S.resendLink, border: 'none', background: 'none' }} onClick={logout}>{cur.signOut}</button>
                 </div>
               </div>
             </div>
@@ -485,10 +504,9 @@ export default function App() {
             </div>
           )}
         </>
-      )}
 
       <style>{`
-        body { overflow: hidden !important; margin: 0; font-family: 'Inter', sans-serif; }
+        body { margin: 0; font-family: 'Inter', sans-serif; }
         .spinnerLarge { width: 48px; height: 48px; border: 4px solid #EDEAFC; border-top-color: #7C6FCD; border-radius: 50%; animation: spin 1s linear infinite; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         .upload-hover-lavender:hover { background: #EDEAFC !important; }
@@ -499,26 +517,6 @@ export default function App() {
 }
 
 const S = {
-  authRoot: { height: '100vh', background: '#F8F7FF', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', overflow: 'hidden' },
-  authCircle1: { position: 'absolute', width: 400, height: 400, background: '#EDEAFC', borderRadius: '50%', top: '-10%', left: '-10%', filter: 'blur(80px)' },
-  authCircle2: { position: 'absolute', width: 300, height: 300, background: '#FCE8F1', borderRadius: '50%', bottom: '5%', right: '5%', filter: 'blur(60px)' },
-  authCard: { width: '100%', maxWidth: 420, background: 'rgba(255, 255, 255, 0.8)', backdropFilter: 'blur(20px)', borderRadius: 32, padding: 40, boxShadow: '0 20px 60px rgba(124, 111, 205, 0.1)', border: '1px solid rgba(255, 255, 255, 0.4)', textAlign: 'center', zIndex: 10 },
-  authHeader: { marginBottom: 40 },
-  authLogo: { fontSize: 28, fontWeight: 900, marginBottom: 8 },
-  authSub: { fontSize: 13, color: '#7A7490' },
-  authTitle: { fontSize: 24, fontWeight: 800, color: '#1C1A35', marginBottom: 12 },
-  authDesc: { fontSize: 14, color: '#7A7490', lineHeight: 1.6, marginBottom: 32 },
-  inputField: { background: '#FFFFFF', borderRadius: 16, border: '1.5px solid #EEEBFB', display: 'flex', alignItems: 'center', padding: '14px 20px', marginBottom: 24 },
-  phonePrefix: { display: 'flex', alignItems: 'center', borderRight: '1px solid #EEEBFB', paddingRight: 12, marginRight: 16 },
-  phoneInput: { flex: 1, border: 'none', outline: 'none', fontSize: 16, fontWeight: 600, color: '#1C1A35', background: 'transparent', letterSpacing: '1px' },
-  authBtn: { width: '100%', background: '#7C6FCD', color: '#FFFFFF', padding: '16px', borderRadius: 16, fontSize: 15, fontWeight: 800, border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s', boxShadow: '0 8px 24px rgba(124, 111, 205, 0.2)' },
-  miniSpinner: { width: 20, height: 20, border: '2.5px solid rgba(255,255,255,0.3)', borderTopColor: '#FFFFFF', borderRadius: '50%', animation: 'spin 0.8s linear infinite' },
-  backBtn: { background: 'none', border: 'none', color: '#7C6FCD', fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', marginBottom: 20, cursor: 'pointer' },
-  otpRow: { display: 'flex', gap: 12, justifyContent: 'center' },
-  otpBox: { width: 60, height: 72, borderRadius: 16, border: '1.5px solid #EEEBFB', background: '#FFFFFF', textAlign: 'center', fontSize: 24, fontWeight: 800, color: '#7C6FCD', outline: 'none' },
-  resendText: { fontSize: 13, color: '#7A7490', marginTop: 24 },
-  resendLink: { color: '#7C6FCD', fontWeight: 700, cursor: 'pointer' },
-  authFooter: { display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 40, fontSize: 11, fontWeight: 700, color: '#B0AACC', textTransform: 'uppercase', letterSpacing: '1px' },
   root: { height: '100vh', background: '#F8F7FF', color: '#1C1A35', display: 'flex', flexDirection: 'column', overflow: 'hidden' },
   nav: { height: 60, background: '#FFFFFF', borderBottom: '1px solid #EEEBFB', flexShrink: 0 },
   navInner: { maxWidth: 1400, margin: '0 auto', height: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 40px', width: '100%' },
@@ -530,7 +528,7 @@ const S = {
   profileBtn: { display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 12, background: '#F8F7FF', border: '1px solid #EEEBFB', color: '#7C6FCD' },
   userName: { fontSize: 13, fontWeight: 700, color: '#1C1A35' },
   main: { maxWidth: 1400, margin: '0 auto', flex: 1, padding: '0 40px 40px 40px', width: '100%', display: 'flex', flexDirection: 'column', height: 'calc(100vh - 60px)', overflowY: 'auto' },
-  staticLayoutPC: { height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', textAlign: 'center', padding: '0' },
+  staticLayoutPC: { minHeight: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', textAlign: 'center', padding: '48px 0 0' },
   heroStatic: { marginBottom: 32, maxWidth: 900 },
   taglineStatic: { background: '#EDEAFC', color: '#4A3FA0', fontSize: 10, fontWeight: 800, borderRadius: 999, padding: '6px 16px', display: 'inline-block', marginBottom: 16, letterSpacing: '0.5px', textTransform: 'uppercase' },
   h1Static: { fontSize: 44, fontWeight: 900, lineHeight: 1.1, margin: 0, letterSpacing: '-1px' },
@@ -549,6 +547,24 @@ const S = {
   footerStatic: { display: 'flex', alignItems: 'center', gap: 16, marginTop: 24 },
   footerItem: { display: 'flex', alignItems: 'center', fontSize: 12, color: '#B0AACC', fontWeight: 600 },
   dotSeparator: { width: 4, height: 4, borderRadius: '50%', background: '#EEEBFB' },
+  aboutSection: { width: '100%', maxWidth: 1100, margin: '96px auto 48px', textAlign: 'left' },
+  aboutIntro: { maxWidth: 680, margin: '0 auto 56px', textAlign: 'center' },
+  aboutEyebrow: { fontSize: 11, fontWeight: 800, letterSpacing: '1.2px', textTransform: 'uppercase', color: '#7C6FCD', marginBottom: 14 },
+  aboutHeadline: { fontSize: 32, fontWeight: 800, color: '#1C1A35', margin: '0 0 16px', letterSpacing: '-0.5px', lineHeight: 1.2 },
+  aboutSub: { fontSize: 16, color: '#7A7490', lineHeight: 1.7, margin: 0 },
+  howItWorksRow: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20, marginBottom: 64 },
+  howStepCard: { background: '#FFFFFF', border: '1px solid #EAE8F5', borderRadius: 24, padding: '28px 26px' },
+  howStepTop: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 },
+  howStepIcon: { width: 44, height: 44, borderRadius: 14, background: '#EDEAFC', color: '#7C6FCD', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  howStepNum: { fontSize: 12, fontWeight: 800, color: '#C4BCEE', letterSpacing: '0.5px' },
+  howStepTitle: { fontSize: 17, fontWeight: 800, color: '#1C1A35', marginBottom: 8 },
+  howStepBody: { fontSize: 14, color: '#7A7490', lineHeight: 1.6 },
+  featureGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20, marginBottom: 56 },
+  featureCard: { background: '#FDFCFF', border: '1px solid #EEEBFB', borderRadius: 20, padding: '24px 22px' },
+  featureIcon: { width: 40, height: 40, borderRadius: 12, background: '#F8F7FF', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  featureTitle: { fontSize: 15, fontWeight: 800, color: '#1C1A35', marginBottom: 8 },
+  featureBody: { fontSize: 13.5, color: '#7A7490', lineHeight: 1.6 },
+  aboutClosing: { textAlign: 'center', maxWidth: 620, margin: '0 auto', fontSize: 16, fontWeight: 600, color: '#4A3FA0', lineHeight: 1.6, fontStyle: 'italic' },
   modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(28, 26, 53, 0.4)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 },
   modalContent: { background: '#FFFFFF', borderRadius: 32, width: '100%', maxWidth: 480, padding: 32, boxShadow: '0 20px 60px rgba(0,0,0,0.15)' },
   modalHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
